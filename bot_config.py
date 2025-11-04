@@ -36,22 +36,46 @@ item_shop = {
     }
 }
 
-# --- Role Shop (Buy roles with Cookies) ---
+# --- Role Shop (Buy roles with special items) ---
+# [تم التعديل] price يمثل الآن الكمية المطلوبة من العملة المحددة في "currency"
 shop_items = {
     "bronze": {
         "name": "Bronze Role",
-        "price": 100,
-        "role_id": 123456789012345678  # <-- EDIT THIS
+        "price": 10,       # يتطلب 10 وحدات من العملة الجديدة
+        "currency": "milk",  # [تم التحديد] يُشترى باللبن
+        "role_id": 123456789012345678, 
+        "emoji": "🥉" # [جديد] رمز دائم للرتبة
     },
     "silver": {
         "name": "Silver Role",
-        "price": 500,
-        "role_id": 123456789012345678  # <-- EDIT THIS
+        "price": 20,       # يتطلب 20 وحدة من العملة الجديدة
+        "currency": "coffee", # [تم التحديد] يُشترى بالقهوة
+        "role_id": 123456789012345678, 
+        "emoji": "🥈" # [جديد] رمز دائم للرتبة
     },
     "gold": {
         "name": "Gold Role",
-        "price": 1000,
-        "role_id": 123456789012345678  # <-- EDIT THIS
+        "price": 20,       # يتطلب 20 وحدة من العملة الجديدة
+        "currency": "matcha", # [تم التحديد] يُشترى بالماتشا
+        "role_id": 123456789012345678, 
+        "emoji": "🥇" # [جديد] رمز دائم للرتبة
+    }
+}
+
+# --- [NEW] Item Usage Configuration ---
+# العناصر التي يمكن استخدامها لتغيير Nickname مؤقتاً
+TEMPORARY_ITEMS = {
+    "milk": {
+        "cost": 5,
+        "emoji": "🥛" 
+    },
+    "coffee": {
+        "cost": 5,
+        "emoji": "☕" 
+    },
+    "matcha": {
+        "cost": 5,
+        "emoji": "🍵" 
     }
 }
 
@@ -69,11 +93,11 @@ for key, details in item_shop.items():
 
 # ---------------------------------
 
-# 3. Helper Function: Get/Create User Wallet [!HEAVILY MODIFIED FOR BANK TAX!]
+# 3. Helper Function: Get/Create User Wallet [!MODIFIED - تم نقل منطق الضريبة!]
 def get_wallet(user_id: str):
     """
-    Safely gets a user's wallet.
-    Applies 24-hour bank tax if necessary.
+    Safely gets a user's wallet. 
+    (NOTE: Tax application logic MOVED to a background loop in bot_commands.py)
     If the user is new OR their data is in an old/bad format,
     it creates a new, default wallet for them.
     """
@@ -101,31 +125,13 @@ def get_wallet(user_id: str):
                 wallet[item] = 0
                 is_updated = True
 
-        # --- [NEW] Bank Tax Logic (Lazy Evaluation) ---
+        # --- [TAX TIME SETUP REMAINS] ---
+        # Ensure the 'last_taxed' key exists for new/old users
         if "last_taxed" not in wallet:
                 wallet["last_taxed"] = current_time
                 is_updated = True
-
-        time_since_tax = current_time - wallet["last_taxed"]
-
-        # Has it been 24 hours (86400 seconds)?
-        if time_since_tax > 86400:
-            bank_balance = wallet.get("bank", 0)
-            if bank_balance > 0:
-                # Calculate how many 24h periods have passed
-                days_passed = time_since_tax // 86400
-
-                # Apply 3% tax for each day passed
-                # (0.97 ** days_passed) = (1 - 0.03) ^ days
-                taxed_balance = bank_balance * (0.97 ** days_passed)
-                wallet["bank"] = int(taxed_balance) # Store as integer
-
-                print(f"Taxed user {user_id} for {days_passed} day(s).")
-
-            # Update the last taxed time
-            wallet["last_taxed"] = current_time
-            is_updated = True
-        # --- [END NEW] ---
+        # --- [TAX APPLICATION REMOVED HERE] ---
+        # تم إزالة كامل المنطق الذي كان يحسب ويطبق الضريبة هنا.
 
         if is_updated:
             db[user_id] = wallet # Save updates
