@@ -143,7 +143,7 @@ class AllCommands(commands.Cog):
 
         # --- Roll the slots ---
         # 5 emojis as requested
-        emojis = ["🍒", "🍋", "💰", "💀", "🍪"]
+        emojis = ["🍵", "☕", "💰", "🥛", "🍪" , "🥔"]
         roll = [random.choice(emojis) for _ in range(3)]
 
         result_msg = f"You spin the slots... and get:\n\n**[ {roll[0]} | {roll[1]} | {roll[2]} ]**\n\n"
