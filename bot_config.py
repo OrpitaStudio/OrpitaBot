@@ -1,146 +1,105 @@
+import discord
 import os
-import math # <-- [NEW] Import math for rounding up fees
-import time # <-- [NEW] Import time for tax timestamps
-from replit import db # Import the database
+import asyncio 
+from discord.ext import commands
+from flask import Flask, jsonify
+from threading import Thread
 from typing import Optional
+import math # <-- [NEW] Import math for cooldown timer
 
-# --- [NEW] CURRENCY & SHOP CONFIGURATION ---
+# --- (Keep Alive Section (from AI code)) ---
+# This will keep the bot running 24/7 with UptimeRobot
+app = Flask('')
 
-# Define all the currencies/items you want in your economy
-# "cookie" is the main currency. "bank" is where money is stored.
-CURRENCIES = ["cookie", "milk", "coffee", "matcha", "bank"]
+@app.route('/')
+def home():
+    # This is the route UptimeRobot will visit
+    return jsonify({'status': 'Bot is alive!'})
 
-# Assign an emoji for each item for display
-CURRENCY_EMOJIS = {
-    "cookie": "🍪",
-    "milk": "🥛",
-    "coffee": "☕",
-    "matcha": "🍵",
-    "bank": "🏦" # <-- [NEW]
-}
+def run_server():
+    # [تصحيح] تم تغيير البورت إلى 5000
+    port = int(os.environ.get('PORT', 5000)) 
+    app.run(host='0.0.0.0', port=port)
 
-# --- Item Shop (Buy items with Cookies) ---
-# Users can buy these items. The price is in "cookie".
-item_shop = {
-    "milk": {
-        "name": "Glass of Milk",
-        "price": 10  # Price in cookies
-    },
-    "coffee": {
-        "name": "Cup of Coffee",
-        "price": 25
-    },
-    "matcha": {
-        "name": "Matcha Latte",
-        "price": 50
-    }
-}
+def keep_alive():
+    # This function runs the web server in a separate thread
+    t = Thread(target=run_server)
+    t.start()
+# ----------------------------------------------------
 
-# --- Role Shop (Buy roles with special items) ---
-# [تم التعديل] price يمثل الآن الكمية المطلوبة من العملة المحددة في "currency"
-shop_items = {
-    "bronze": {
-        "name": "Bronze Role",
-        "price": 10,       # يتطلب 10 وحدات من العملة الجديدة
-        "currency": "milk",  # [تم التحديد] يُشترى باللبن
-        "role_id": 123456789012345678, 
-        "emoji": "🥉" # [جديد] رمز دائم للرتبة
-    },
-    "silver": {
-        "name": "Silver Role",
-        "price": 20,       # يتطلب 20 وحدة من العملة الجديدة
-        "currency": "coffee", # [تم التحديد] يُشترى بالقهوة
-        "role_id": 123456789012345678, 
-        "emoji": "🥈" # [جديد] رمز دائم للرتبة
-    },
-    "gold": {
-        "name": "Gold Role",
-        "price": 20,       # يتطلب 20 وحدة من العملة الجديدة
-        "currency": "matcha", # [تم التحديد] يُشترى بالماتشا
-        "role_id": 123456789012345678, 
-        "emoji": "🥇" # [جديد] رمز دائم للرتبة
-    }
-}
+# --- (Bot Section) ---
 
-# --- [NEW] Item Usage Configuration ---
-# العناصر التي يمكن استخدامها لتغيير Nickname مؤقتاً
-TEMPORARY_ITEMS = {
-    "milk": {
-        "cost": 5,
-        "emoji": "🥛" 
-    },
-    "coffee": {
-        "cost": 5,
-        "emoji": "☕" 
-    },
-    "matcha": {
-        "cost": 5,
-        "emoji": "🍵" 
-    }
-}
+# 1. Define Intents
+intents = discord.Intents.default()
+intents.message_content = True # To read messages
+intents.members = True         # To see member information
+intents.guilds = True          # Required for role management
 
-# --- [NEW] Currency Value Mapping ---
-# Automatically creates a value map for all currencies based on their price in cookies
-# This is used to calculate total net worth for the leaderboard
-CURRENCY_VALUES = {
-    "cookie": 1,  # The base currency is worth 1
-    "bank": 1     # Money in the bank is worth 1
-}
-# Add all items from the item_shop to the value map
-for key, details in item_shop.items():
-    if key in CURRENCIES:
-        CURRENCY_VALUES[key] = details["price"]
+# 2. Define the Bot (Prefix is !)
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
-# ---------------------------------
+# 3. On Ready Event (Simple)
+@bot.event
+async def on_ready():
+    print(f'Bot logged in as: {bot.user}')
+    print('---------------------------')
 
-# 3. Helper Function: Get/Create User Wallet [!MODIFIED - تم نقل منطق الضريبة!]
-def get_wallet(user_id: str):
-    """
-    Safely gets a user's wallet. 
-    (NOTE: Tax application logic MOVED to a background loop in bot_commands.py)
-    If the user is new OR their data is in an old/bad format,
-    it creates a new, default wallet for them.
-    """
-    user_id = str(user_id)
-    current_time = int(time.time())
+# 4. (Important) Error Handling (Moved from main file)
+@bot.event
+async def on_command_error(ctx, error):
+    # --- [NEW] Cooldown Error Handling ---
+    if isinstance(error, commands.CommandOnCooldown):
+        # Format the remaining time
+        seconds_remaining = int(error.retry_after)
+        hours, remainder = divmod(seconds_remaining, 3600)
+        minutes, seconds = divmod(remainder, 60)
 
+        if hours > 0:
+            time_left = f"{hours}h {minutes}m {seconds}s"
+        elif minutes > 0:
+            time_left = f"{minutes}m {seconds}s"
+        else:
+            time_left = f"{seconds}s"
+
+        await ctx.send(f"This command is on cooldown. Please try again in **{time_left}**.")
+    # --- [END NEW] ---
+
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("You do not have permission to use this command. 👮‍♂️")
+    elif isinstance(error, commands.MemberNotFound):
+        await ctx.send(f"Error: Could not find that member. Please check the mention and try again.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"Error: You forgot an argument. Usage: `{ctx.prefix}{ctx.command.name} {ctx.command.signature}`")
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send(f"Error: Invalid argument. Make sure you are using the command correctly.")
+    else:
+        # Print other errors to the console for debugging
+        print(f"An unexpected error occurred: {error}") 
+
+# --- [NEW] Main async function to load Cogs and run the bot ---
+async def main():
+    # Get the token
+    token = os.environ.get('DISCORD_BOT_TOKEN') 
+    if not token:
+        print("[Error] Bot token not found in Secrets (🔒)")
+        return
+
+    # Start the keep-alive server
+    keep_alive() 
+
+    # Load the commands from our other file
     try:
-        # Try to get the wallet
-        wallet_proxy = db.get(user_id)
+        await bot.load_extension('bot_commands')
+        print("Successfully loaded 'bot_commands.py'")
+    except Exception as e:
+        print(f"Failed to load 'bot_commands.py': {e}")
 
-        # --- [THE FIX] ---
-        # Convert the "Proxy Object" (ObservedDict) from replit-db
-        # into a REAL dictionary. This prevents silent save failures.
-        wallet = dict(wallet_proxy)
-        # --- [END FIX] ---
+    # Start the bot
+    try:
+        await bot.start(token)
+    except Exception as e:
+        print(f"[Error] An issue occurred: {e}")
 
-        # Check if it's a valid wallet (a dictionary)
-        if not isinstance(wallet, dict):
-            raise TypeError("Old data format found. Overwriting.")
-
-        # Check if the wallet is missing any new currencies
-        is_updated = False
-        for item in CURRENCIES:
-            if item not in wallet:
-                wallet[item] = 0
-                is_updated = True
-
-        # --- [TAX TIME SETUP REMAINS] ---
-        # Ensure the 'last_taxed' key exists for new/old users
-        if "last_taxed" not in wallet:
-                wallet["last_taxed"] = current_time
-                is_updated = True
-        # --- [TAX APPLICATION REMOVED HERE] ---
-        # تم إزالة كامل المنطق الذي كان يحسب ويطبق الضريبة هنا.
-
-        if is_updated:
-            db[user_id] = wallet # Save updates
-
-        return wallet
-
-    except (TypeError, KeyError, AttributeError, ValueError):
-        # Create and return a new, default (empty) wallet.
-        new_wallet = {item: 0 for item in CURRENCIES}
-        new_wallet["last_taxed"] = current_time # <-- [NEW] Set tax time
-        db[user_id] = new_wallet
-        return new_wallet
+# --- (Run Section) ---
+if __name__ == "__main__":
+    asyncio.run(main())
